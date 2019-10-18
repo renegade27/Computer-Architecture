@@ -7,15 +7,26 @@ class CPU:
     def __init__(self):
         self.ram = [0] * 256
         self.reg = [0] * 8
+        self.sp = 244
         self.pc = self.reg[0]
         #Commands binded with opcodes
         self.commands = {
-            0b00000001: self.hl t,
+            0b00000001: self.hlt,
             0b10000010: self.ldi,
             0b01000111: self.prn,
+            0b10100010: self.mul,
+            0b10100000: self.add,
+            0b01000101: self.push,
+            0b01000110: self.pop,
+            0b01010100: self.jmp,
+            0b01010101: self.jeq,
+            0b01010110: self.jne,
+            0b10100111: self.cmp
         }
-        pass
-    
+        self.E = 0  # 0 == false, 1 == true
+        self.L = 0 # 1 == regA.value < regB.value
+        self.G = 0 # 1 == regA.value > regB.value
+
     def ram_read(self, address):
         return self.ram[address]
 
@@ -37,21 +48,88 @@ class CPU:
         print(self.reg[operand_a])
         #Since we're evaluating only 1 item in reg, advance 2 spaces
         return (2, True)
+    
+    def add(self, operand_a, operand_b):
+        self.alu("ADD", operand_a, operand_b)
+        return (3, True)
 
-    def load(self):
+    def mul(self, operand_a, operand_b):
+        self.alu("MUL", operand_a, operand_b)
+        return (3, True)
+
+    def push(self, operand_a, operand_b):
+        reg_address = self.ram[self.pc + 1]
+        self.sp -= 1
+        value = self.reg[reg_address]
+        self.ram[self.sp] = value
+        return (2, True)
+
+    def pop(self, operand_a, operand_b):
+        pop_value = self.ram[self.sp]
+        # reg_address = self.ram[self.pc + 1]
+        self.reg[operand_a] = pop_value
+        self.sp += 1
+        return (2, True)
+
+    # Jump to address in given register (program counter + 1 of ram)
+    def jmp(self, operand_a, operand_b):
+        jump_address = self.reg[operand_a]
+        self.pc = jump_address
+        return(0, True)
+
+    # Compare our next 2 registers where position = operands and set our flags
+    def cmp(self, operand_a, operand_b):
+
+        # RESET Flags for subsequent compares ?
+        self.E = 0
+        self.L = 0
+        self.G = 0
+
+        value_one = self.reg[operand_a]
+        value_two = self.reg[operand_b]
+
+        if value_one == value_two:
+            self.E = 1
+        elif value_one < value_two:
+            self.L = 1
+        elif value_one > value_two:
+            self.G = 1
+        
+        return(3, True)
+
+    # If our E flag is clear, jump to given register at operand_a. Else, continue into our program
+    def jne(self, operand_a, operand_b):
+        if self.E == 0:
+            self.pc = self.reg[operand_a]
+            return(0, True)
+        else:
+            return(2, True)
+
+    # If our E flag is set, jump to given register at operand_a. Else, continue into our program
+    def jeq(self, operand_a, operand_b):
+        if self.E == 1:
+            self.pc = self.reg[operand_a]
+            return(0, True)
+        else:
+            return(2, True)
+
+    def load(self, program):
         address = 0
 
         # For now, we've just hardcoded a program:
 
-        program = [
-            # From print8.ls8
-            0b10000010, # LDI R0,8
-            0b00000000,
-            0b00001000,
-            0b01000111, # PRN R0
-            0b00000000,
-            0b00000001, # HLT
-        ]
+        with open(program) as f:
+            program = []
+
+            for line in f:
+                comment_split = line.split('#')
+                number = comment_split[0].strip()
+                try:
+                    program.append(int(number, 2))
+                except ValueError:
+                    pass
+        
+        address = 0
 
         for instruction in program:
             self.ram[address] = instruction
@@ -64,6 +142,9 @@ class CPU:
         if op == "ADD":
             self.reg[reg_a] += self.reg[reg_b]
         #elif op == "SUB": etc
+        # multiplication
+        elif op == "MUL":
+            self.reg[reg_a] *= self.reg[reg_b]
         else:
             raise Exception("Unsupported ALU operation")
 
@@ -113,5 +194,5 @@ class CPU:
             except:
                 #If OP Code is unknown, this will fire
                 print(f"Unknown command: {ir}")
+                print(self.reg)
                 sys.exit() 
-        pass
